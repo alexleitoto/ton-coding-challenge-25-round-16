@@ -1,0 +1,64 @@
+;; Filename: RequestGate.tlk
+;; Contract A: Sends a request and waits for the rejection message (RichBounce).
+;; 合约 A：发送一个请求，并等待拒绝消息 (RichBounce)。
+
+#include "stdlib.tlk"
+
+;; RichBounce Rejection Handler
+() handle_rejection_response(cell rejection_payload) impure inline {
+    
+    ;; Store the bounce cell in c7 for verification
+    c7 = rejection_payload;
+    
+    ;; Log the successful handling
+    "RequestGate: Rejection received (RichBounce). Access denied, as expected." print;
+    
+    ;; Analyze the error OP code (usually 0xFFFFFFFF)
+    slice data_s = rejection_payload.begin_parse();
+    int op_code = data_s.load_uint(32); 
+    "Rejection Op Code:" print_int; op_code print_int;
+    
+    return;
+}
+
+;; Main receiver function
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    
+    ;; Step 1: Check for Rejection Response (Bounce)
+    slice header_slice = in_msg_full.begin_parse();
+    int flags = header_slice.load_uint(6);
+    
+    if (flags & 1) {
+        ;; Process the RichBounce
+        handle_rejection_response(in_msg_body);
+        return;
+    }
+    
+    ;; --- Step 2: Send Request ---
+    
+    ;; Target address B (Unique Placeholder: 0xBADF00B1)
+    cell target_b_addr_cell = begin_cell().store_uint(0xBADF00B1, 32).end_cell(); 
+    slice target_b_addr = target_b_addr_cell.begin_parse();
+
+    ;; Create the request body with a unique op code (0xFACEBEAD)
+    cell request_body = begin_cell()
+        .store_uint(0xFACEBEAD, 32) ;; Unique Request op code
+        .store_ref(in_msg_body)     ;; Embed the original payload
+        .end_cell();
+
+    ;; Send the message to B. 
+    ;; Use Mode 132 (128 | 4): 128 for allowing failure on low balance, 4 for paying remaining TON to the recipient. Bounceable by default.
+    send_raw_message(
+        begin_cell()
+            .store_slice(target_b_addr)
+            .store_coins(1) ;; Send 1 nanoton (minimal value)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 1) ;; no init
+            .store_uint(0, 1) ;; no data
+            .store_ref(request_body)
+        .end_cell(), 
+        132 
+    );
+
+    "RequestGate: Access request sent (OP: 0xFACEBEAD). Awaiting rejection." print;
+}
