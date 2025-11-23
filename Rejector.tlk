@@ -1,0 +1,33 @@
+;; Filename: Rejector.tlk
+;; Contract B: Receives the request and immediately rejects it by causing a runtime error.
+;; 合约 B：接收请求并立即通过引发运行时错误来拒绝它。
+
+#include "stdlib.tlk"
+
+;; Internal function that executes the rejection/fault
+() execute_rejection_protocol() impure {
+    
+    ;; Check flags to ignore incoming bounces
+    slice msg_slice = in_msg_full().begin_parse(); 
+    int flags = msg_slice.load_uint(6);
+    
+    if (flags & 1) {
+        "Rejector: Received a bounce, ignoring." print;
+        return;
+    }
+    
+    ;; --- RichBounce Trigger ---
+    
+    "Rejector: Request received. Access denied. Triggering rejection (Error Code 2024)." print;
+    
+    ;; **Action:** Use throw with a new unique error code (2024)
+    ;; This triggers the RichBounce mechanism back to the sender (RequestGate).
+    throw(2024); 
+    
+    ;; Execution halts here.
+}
+
+;; Standard entry point
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    execute_rejection_protocol();
+}
